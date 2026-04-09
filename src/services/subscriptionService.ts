@@ -45,3 +45,10 @@ export async function deleteSubscription(id: string) {
     throw new NotFoundError('Subscription not found');
   }
 }
+
+export async function getByOwnerRepo(owner: string, repo: string) {
+  return db
+    .select()
+    .from(subscriptions)
+    .where(and(eq(subscriptions.owner, owner), eq(subscriptions.repo, repo)));
+}

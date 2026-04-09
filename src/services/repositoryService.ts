@@ -37,3 +37,7 @@ export async function findByOwnerRepo(owner: string, repo: string) {
 
   return repository ?? null;
 }
+
+export async function getAllTracked() {
+  return db.select().from(repositories);
+}

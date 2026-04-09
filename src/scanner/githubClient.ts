@@ -3,6 +3,8 @@ import { AppError, NotFoundError, RateLimitError } from '../errors';
 import { logger } from '../utils/logger';
 
 const GITHUB_API = 'https://api.github.com';
+let lastRateLimitRemaining: number | null = null;
+let rateLimitResetAt: number | null = null;
 
 interface GitHubRepo {
   full_name: string;
@@ -32,8 +34,15 @@ function buildHeaders(): Record<string, string> {
 
 async function handleResponse<T>(response: Response, context: string): Promise<T> {
   const remaining = response.headers.get('x-ratelimit-remaining');
-  if (remaining) {
-    logger.debug(`GitHub API rate limit remaining: ${remaining}`);
+  const reset = response.headers.get('x-ratelimit-reset');
+
+  if (remaining !== null) {
+    lastRateLimitRemaining = Number(remaining);
+    logger.debug(`GitHub API rate limit remaining: ${lastRateLimitRemaining}`);
+  }
+
+  if (reset !== null) {
+    rateLimitResetAt = Number(reset) * 1000; // convert to ms timestamp
   }
 
   if (response.ok) {
@@ -72,6 +81,10 @@ export async function getLatestRelease(owner: string, repo: string): Promise<Git
   });
 
   return handleResponse<GitHubRelease>(response, `release for ${owner}/${repo}`);
+}
+
+export function getRateLimitState() {
+  return { remaining: lastRateLimitRemaining, resetAt: rateLimitResetAt };
 }
 
 export type { GitHubRelease, GitHubRepo };

@@ -3,6 +3,7 @@ import 'dotenv/config';
 import app from './app';
 import { config } from './config';
 import { runMigrations } from './db/migrate';
+import { startScanner } from './scanner';
 import { logger } from './utils/logger';
 
 async function main(): Promise<void> {
@@ -10,6 +11,7 @@ async function main(): Promise<void> {
 
   app.listen(config.PORT, () => {
     logger.info(`Server running on port ${config.PORT}`);
+    startScanner();
   });
 }
 

@@ -20,6 +20,8 @@ COPY package*.json ./
 RUN npm ci --omit=dev --ignore-scripts
 
 COPY --from=builder /app/dist ./dist
+COPY swagger.yaml ./
+COPY drizzle/ ./drizzle/
 
 EXPOSE 3000 50051
 

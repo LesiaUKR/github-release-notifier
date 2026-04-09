@@ -3,8 +3,11 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '../db';
 import { subscriptions } from '../db/schema';
 import { ConflictError, NotFoundError } from '../errors';
+import * as repositoryService from './repositoryService';
 
 export async function createSubscription(email: string, owner: string, repo: string) {
+  await repositoryService.validateAndUpsert(owner, repo);
+
   const existing = await db
     .select()
     .from(subscriptions)

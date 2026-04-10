@@ -6,7 +6,7 @@ const envSchema = z.object({
 
   DATABASE_URL: z.url(),
 
-  REDIS_URL: z.url().optional(),
+  REDIS_URL: z.string().optional(),
 
   GITHUB_TOKEN: z.string().optional(),
 

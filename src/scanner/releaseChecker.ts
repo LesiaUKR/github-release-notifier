@@ -4,6 +4,7 @@ import { config } from '../config';
 import { db } from '../db';
 import { repositories } from '../db/schema';
 import { NotFoundError, RateLimitError } from '../errors';
+import { sendReleaseNotifications } from '../notifier';
 import * as cacheService from '../services/cacheService';
 import * as repositoryService from '../services/repositoryService';
 import * as subscriptionService from '../services/subscriptionService';
@@ -19,12 +20,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function isRateLimited(): boolean {
-  const { remaining, resetAt } = githubClient.getRateLimitState();
-
-  if (resetAt !== null && Date.now() < resetAt) {
-    logger.warn(`GitHub rate limit active until ${new Date(resetAt).toISOString()}`);
-    return true;
-  }
+  const { remaining } = githubClient.getRateLimitState();
 
   if (remaining !== null && remaining < RATE_LIMIT_THRESHOLD) {
     logger.warn(`GitHub rate limit low: ${remaining} requests remaining`);
@@ -83,7 +79,14 @@ export async function checkAllRepositories(): Promise<void> {
         logger.info(
           `Scanner: ${subscribers.length} subscribers to notify for ${repo.owner}/${repo.repo}`
         );
-        // TODO (Issue #8): call notifier with subscribers and release data
+        await sendReleaseNotifications(subscribers, {
+          owner: repo.owner,
+          repo: repo.repo,
+          tagName: release.tag_name,
+          releaseName: release.name,
+          htmlUrl: release.html_url,
+          body: release.body,
+        });
 
         await updateRepository(repo.id, release.tag_name);
       } else {

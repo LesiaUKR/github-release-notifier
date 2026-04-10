@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package subscriptions;
+
+service SubscriptionService {
+  rpc CreateSubscription(CreateSubscriptionRequest) returns (SubscriptionResponse);
+  rpc GetSubscription(GetSubscriptionRequest) returns (SubscriptionResponse);
+  rpc DeleteSubscription(DeleteSubscriptionRequest) returns (Empty);
+}
+
+message CreateSubscriptionRequest {
+  string email = 1;
+  string repo = 2;
+}
+
+message GetSubscriptionRequest {
+  string id = 1;
+}
+
+message DeleteSubscriptionRequest {
+  string id = 1;
+}
+
+message SubscriptionResponse {
+  string id = 1;
+  string email = 2;
+  string repo = 3;
+  string created_at = 4;
+}
+
+message Empty {}

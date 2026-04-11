@@ -38,6 +38,31 @@ async function sendViaBrevo(to: string, subject: string, html: string): Promise<
   logger.info(`Email sent to ${to} via Brevo API, response: ${body}`);
 }
 
+async function sendViaResend(to: string, subject: string, html: string): Promise<void> {
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.RESEND_API_KEY!}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: config.RESEND_FROM,
+      to: [to],
+      subject,
+      html,
+    }),
+  });
+
+  const body = await response.text();
+  if (!response.ok) throw new Error(`Resend API error ${response.status}: ${body}`);
+
+  let emailId = '';
+  try {
+    emailId = JSON.parse(body).id ?? '';
+  } catch {}
+  logger.info(`Email sent to ${to} via Resend API${emailId ? `, id: ${emailId}` : ''}`);
+}
+
 // SMTP sender (Ethereal for dev, custom SMTP for prod)
 let transporterPromise: Promise<Transporter | null> | null = null;
 
@@ -104,7 +129,11 @@ async function sendViaSmtp(to: string, subject: string, html: string): Promise<v
 
 // Main send function with retry logic
 export async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
-  const sender = config.BREVO_API_KEY ? sendViaBrevo : sendViaSmtp;
+  const sender = config.RESEND_API_KEY
+    ? sendViaResend
+    : config.BREVO_API_KEY
+      ? sendViaBrevo
+      : sendViaSmtp;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {

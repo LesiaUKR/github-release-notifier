@@ -1,5 +1,3 @@
-// src/notifier/emailSender.ts
-
 import type { Transporter } from 'nodemailer';
 import nodemailer from 'nodemailer';
 
@@ -14,6 +12,32 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Brevo HTTP API sender
+async function sendViaBrevo(to: string, subject: string, html: string): Promise<void> {
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'api-key': config.BREVO_API_KEY!,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({
+      sender: { email: config.SMTP_FROM },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Brevo API error ${response.status}: ${body}`);
+  }
+
+  logger.info(`Email sent to ${to} via Brevo API`);
+}
+
+// SMTP sender (Ethereal for dev, custom SMTP for prod)
 let transporterPromise: Promise<Transporter | null> | null = null;
 
 function createTransporter(): Promise<Transporter | null> {
@@ -55,33 +79,37 @@ function getTransporter(): Promise<Transporter | null> {
   return transporterPromise;
 }
 
-export async function sendEmail(to: string, subject: string, html: string): Promise<void> {
+async function sendViaSmtp(to: string, subject: string, html: string): Promise<void> {
   const transporter = await getTransporter();
 
   if (!transporter) {
-    logger.warn(`Email not sent to ${to} — no transporter configured`);
-    emailsSentTotal.inc({ status: 'failure' });
-    return;
+    throw new Error('No email transporter configured');
   }
+
+  const info = await transporter.sendMail({
+    from: config.SMTP_FROM,
+    to,
+    subject,
+    html,
+  });
+
+  logger.info(`Email sent to ${to}, messageId: ${info.messageId}`);
+
+  const previewUrl = nodemailer.getTestMessageUrl(info);
+  if (previewUrl) {
+    logger.info(`Preview URL: ${previewUrl}`);
+  }
+}
+
+// Main send function with retry logic
+export async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
+  const sender = config.BREVO_API_KEY ? sendViaBrevo : sendViaSmtp;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const info = await transporter.sendMail({
-        from: config.SMTP_FROM,
-        to,
-        subject,
-        html,
-      });
-
-      logger.info(`Email sent to ${to}, messageId: ${info.messageId}`);
-
-      const previewUrl = nodemailer.getTestMessageUrl(info);
-      if (previewUrl) {
-        logger.info(`Preview URL: ${previewUrl}`);
-      }
-
+      await sender(to, subject, html);
       emailsSentTotal.inc({ status: 'success' });
-      return;
+      return true;
     } catch (error) {
       if (attempt < MAX_RETRIES) {
         const delay = Math.pow(2, attempt + 1) * BASE_DELAY_MS;
@@ -93,7 +121,10 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
       } else {
         logger.error(`Email to ${to} failed after ${MAX_RETRIES + 1} attempts:`, error);
         emailsSentTotal.inc({ status: 'failure' });
+        return false;
       }
     }
   }
+
+  return false;
 }

@@ -107,7 +107,6 @@ describe('emailSender', () => {
     const promise = sendEmail('user@example.com', 'Test', '<p>Hi</p>');
     await jest.advanceTimersByTimeAsync(30000);
 
-    // Should resolve, not reject
-    await expect(promise).resolves.toBeUndefined();
+    await expect(promise).resolves.toBe(false);
   });
 });

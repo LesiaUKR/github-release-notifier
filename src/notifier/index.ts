@@ -28,9 +28,17 @@ export async function sendConfirmationEmail(data: ConfirmationData): Promise<voi
     unsubscribeUrl,
   });
 
-  await sendEmail(data.email, subject, html);
+  const sent = await sendEmail(data.email, subject, html);
 
-  logger.info(`Notifier: confirmation email sent to ${data.email} for ${data.owner}/${data.repo}`);
+  if (sent) {
+    logger.info(
+      `Notifier: confirmation email sent to ${data.email} for ${data.owner}/${data.repo}`
+    );
+  } else {
+    logger.error(
+      `Notifier: failed to send confirmation email to ${data.email} for ${data.owner}/${data.repo}`
+    );
+  }
 }
 
 export async function sendReleaseNotifications(

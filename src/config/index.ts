@@ -15,6 +15,7 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().default('noreply@github-release-notifier.com'),
+  BREVO_API_KEY: z.string().optional(),
   BASE_URL: z.string().default('http://localhost:3000'),
 
   SCAN_INTERVAL_MS: z.coerce.number().default(300_000),

@@ -2,7 +2,6 @@ import { ConflictError, NotFoundError } from '@/errors';
 import * as repositoryService from '@/services/repositoryService';
 import * as subscriptionService from '@/services/subscriptionService';
 
-// Must be first — prevents process.exit(1) from config validation
 jest.mock('@/config', () => ({
   config: {
     NODE_ENV: 'test',
@@ -17,10 +16,10 @@ jest.mock('@/config', () => ({
     SMTP_FROM: 'test@test.com',
     SCAN_INTERVAL_MS: 300000,
     GRPC_PORT: 50051,
+    BASE_URL: 'http://localhost:3000',
   },
 }));
 
-// Mock db module — Drizzle query chain
 jest.mock('@/db', () => {
   const mockReturning = jest.fn();
   const mockWhere = jest.fn();
@@ -31,12 +30,17 @@ jest.mock('@/db', () => {
   const mockDelete = jest.fn(() => ({
     where: jest.fn(() => ({ returning: mockReturning })),
   }));
+  const mockUpdateSet = jest.fn(() => ({
+    where: jest.fn(() => ({ returning: mockReturning })),
+  }));
+  const mockUpdate = jest.fn(() => ({ set: mockUpdateSet }));
 
   return {
     db: {
       select: mockSelect,
       insert: mockInsert,
       delete: mockDelete,
+      update: mockUpdate,
       _mocks: {
         mockSelect,
         mockFrom,
@@ -45,20 +49,21 @@ jest.mock('@/db', () => {
         mockValues,
         mockReturning,
         mockDelete,
+        mockUpdate,
+        mockUpdateSet,
       },
     },
   };
 });
 
-// Mock repositoryService — we don't test it here
 jest.mock('@/services/repositoryService');
 
-// Access mock internals for assertions
 const { db } = jest.requireMock('@/db') as {
   db: {
     select: jest.Mock;
     insert: jest.Mock;
     delete: jest.Mock;
+    update: jest.Mock;
     _mocks: {
       mockSelect: jest.Mock;
       mockFrom: jest.Mock;
@@ -67,6 +72,8 @@ const { db } = jest.requireMock('@/db') as {
       mockValues: jest.Mock;
       mockReturning: jest.Mock;
       mockDelete: jest.Mock;
+      mockUpdate: jest.Mock;
+      mockUpdateSet: jest.Mock;
     };
   };
 };
@@ -78,6 +85,9 @@ const mockSubscription = {
   email: 'test@example.com',
   owner: 'facebook',
   repo: 'react',
+  status: 'pending',
+  confirmationToken: 'test-token-uuid',
+  tokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
   createdAt: new Date('2025-01-01'),
 };
 
@@ -87,7 +97,7 @@ describe('subscriptionService', () => {
   });
 
   describe('createSubscription', () => {
-    it('should create a subscription successfully', async () => {
+    it('should create a subscription with pending status', async () => {
       db._mocks.mockWhere.mockResolvedValueOnce([]);
       db._mocks.mockReturning.mockResolvedValueOnce([mockSubscription]);
 
@@ -99,14 +109,124 @@ describe('subscriptionService', () => {
 
       expect(mockValidateAndUpsert).toHaveBeenCalledWith('facebook', 'react');
       expect(result).toEqual(mockSubscription);
+      expect(result.status).toBe('pending');
+      expect(result.confirmationToken).toBeDefined();
     });
 
-    it('should throw ConflictError if subscription already exists', async () => {
-      db._mocks.mockWhere.mockResolvedValueOnce([mockSubscription]);
+    it('should throw ConflictError if subscription is active', async () => {
+      db._mocks.mockWhere.mockResolvedValueOnce([{ ...mockSubscription, status: 'active' }]);
 
       await expect(
         subscriptionService.createSubscription('test@example.com', 'facebook', 'react')
       ).rejects.toThrow(ConflictError);
+    });
+
+    it('should throw ConflictError if pending and token not expired', async () => {
+      db._mocks.mockWhere.mockResolvedValueOnce([
+        { ...mockSubscription, status: 'pending', tokenExpiresAt: new Date(Date.now() + 100000) },
+      ]);
+
+      await expect(
+        subscriptionService.createSubscription('test@example.com', 'facebook', 'react')
+      ).rejects.toThrow(ConflictError);
+    });
+
+    it('should reactivate if pending and token expired', async () => {
+      db._mocks.mockWhere.mockResolvedValueOnce([
+        { ...mockSubscription, status: 'pending', tokenExpiresAt: new Date(Date.now() - 100000) },
+      ]);
+      db._mocks.mockReturning.mockResolvedValueOnce([
+        { ...mockSubscription, status: 'pending', confirmationToken: 'new-token' },
+      ]);
+
+      const result = await subscriptionService.createSubscription(
+        'test@example.com',
+        'facebook',
+        'react'
+      );
+
+      expect(db.update).toHaveBeenCalled();
+      expect(result.status).toBe('pending');
+    });
+
+    it('should reactivate inactive subscription', async () => {
+      db._mocks.mockWhere.mockResolvedValueOnce([{ ...mockSubscription, status: 'inactive' }]);
+      db._mocks.mockReturning.mockResolvedValueOnce([
+        { ...mockSubscription, status: 'pending', confirmationToken: 'new-token' },
+      ]);
+
+      const result = await subscriptionService.createSubscription(
+        'test@example.com',
+        'facebook',
+        'react'
+      );
+
+      expect(db.update).toHaveBeenCalled();
+      expect(result.status).toBe('pending');
+    });
+  });
+
+  describe('confirmSubscription', () => {
+    it('should activate a pending subscription', async () => {
+      db._mocks.mockWhere.mockResolvedValueOnce([mockSubscription]);
+      db._mocks.mockReturning.mockResolvedValueOnce([{ ...mockSubscription, status: 'active' }]);
+
+      const result = await subscriptionService.confirmSubscription('test-token-uuid');
+
+      expect(result.status).toBe('active');
+    });
+
+    it('should return subscription if already active', async () => {
+      db._mocks.mockWhere.mockResolvedValueOnce([{ ...mockSubscription, status: 'active' }]);
+
+      const result = await subscriptionService.confirmSubscription('test-token-uuid');
+
+      expect(result.status).toBe('active');
+    });
+
+    it('should throw NotFoundError for invalid token', async () => {
+      db._mocks.mockWhere.mockResolvedValueOnce([]);
+
+      await expect(subscriptionService.confirmSubscription('bad-token')).rejects.toThrow(
+        NotFoundError
+      );
+    });
+
+    it('should throw NotFoundError if token expired', async () => {
+      db._mocks.mockWhere.mockResolvedValueOnce([
+        { ...mockSubscription, tokenExpiresAt: new Date(Date.now() - 100000) },
+      ]);
+
+      await expect(subscriptionService.confirmSubscription('test-token-uuid')).rejects.toThrow(
+        NotFoundError
+      );
+    });
+
+    it('should throw NotFoundError if subscription is inactive', async () => {
+      db._mocks.mockWhere.mockResolvedValueOnce([{ ...mockSubscription, status: 'inactive' }]);
+
+      await expect(subscriptionService.confirmSubscription('test-token-uuid')).rejects.toThrow(
+        NotFoundError
+      );
+    });
+  });
+
+  describe('unsubscribeByToken', () => {
+    it('should deactivate subscription', async () => {
+      db._mocks.mockWhere.mockResolvedValueOnce([{ ...mockSubscription, status: 'active' }]);
+      db._mocks.mockReturning.mockResolvedValueOnce([{ ...mockSubscription, status: 'inactive' }]);
+
+      const result = await subscriptionService.unsubscribeByToken('test-token-uuid');
+
+      expect(result.status).toBe('inactive');
+    });
+
+    it('should throw NotFoundError for invalid token', async () => {
+      db._mocks.mockWhere.mockResolvedValueOnce([]);
+
+      await expect(subscriptionService.unsubscribeByToken('bad-token')).rejects.toThrow(
+        NotFoundError
+      );
     });
   });
 
@@ -153,12 +273,13 @@ describe('subscriptionService', () => {
   });
 
   describe('getByOwnerRepo', () => {
-    it('should return subscriptions for owner/repo', async () => {
-      db._mocks.mockWhere.mockResolvedValueOnce([mockSubscription]);
+    it('should return only active subscriptions', async () => {
+      const activeSub = { ...mockSubscription, status: 'active' };
+      db._mocks.mockWhere.mockResolvedValueOnce([activeSub]);
 
       const result = await subscriptionService.getByOwnerRepo('facebook', 'react');
 
-      expect(result).toEqual([mockSubscription]);
+      expect(result).toEqual([activeSub]);
     });
 
     it('should return empty array if no subscriptions', async () => {

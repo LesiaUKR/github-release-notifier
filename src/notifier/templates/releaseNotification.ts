@@ -1,4 +1,4 @@
-// src/notifier/templates/releaseNotification.ts
+import { escapeHtml } from './helpers';
 
 const MAX_BODY_LENGTH = 500;
 
@@ -9,6 +9,7 @@ interface ReleaseEmailData {
   releaseName: string | null;
   htmlUrl: string;
   body: string | null;
+  unsubscribeUrl: string;
 }
 
 interface EmailContent {
@@ -19,14 +20,6 @@ interface EmailContent {
 function truncate(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return text.slice(0, maxLength) + '…';
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 export function buildReleaseEmail(data: ReleaseEmailData): EmailContent {
@@ -54,7 +47,9 @@ export function buildReleaseEmail(data: ReleaseEmailData): EmailContent {
       ${releaseNotes}
       <hr style="margin-top:24px;border:none;border-top:1px solid #e1e4e8;">
       <p style="font-size:12px;color:#6a737d;margin-top:12px;">
-        You received this email because you subscribed to releases of ${escapeHtml(repoFullName)}.
+       You received this email because you subscribed to releases of ${escapeHtml(repoFullName)}.
+      <br>
+      <a href="${data.unsubscribeUrl}" style="color:#6a737d;">Unsubscribe</a>
       </p>
     </div>
   `.trim();

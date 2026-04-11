@@ -12,6 +12,7 @@ jest.mock('@/config', () => ({
     SMTP_FROM: 'test@test.com',
     SCAN_INTERVAL_MS: 300000,
     GRPC_PORT: 50051,
+    BASE_URL: 'http://localhost:3000',
   },
 }));
 
@@ -139,7 +140,10 @@ describe('releaseChecker', () => {
   });
 
   it('should notify subscribers when new release detected', async () => {
-    const subscribers = [{ email: 'user@example.com' }, { email: 'user2@example.com' }];
+    const subscribers = [
+      { email: 'user@example.com', confirmationToken: 'token-1' },
+      { email: 'user2@example.com', confirmationToken: 'token-2' },
+    ];
     mockGetAllTracked.mockResolvedValueOnce([{ ...baseRepo, lastSeenTag: 'v18.1.0' }]);
     mockGetLatestRelease.mockResolvedValueOnce(mockRelease);
     mockGetByOwnerRepo.mockResolvedValueOnce(subscribers);

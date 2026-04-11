@@ -9,7 +9,6 @@ import {
 } from 'drizzle-orm/pg-core';
 
 // ── subscriptions ──────────────────────────────────────────────
-// WHO wants notifications about WHAT
 export const subscriptions = pgTable(
   'subscriptions',
   {
@@ -17,11 +16,15 @@ export const subscriptions = pgTable(
     email: varchar('email', { length: 255 }).notNull(),
     owner: varchar('owner', { length: 255 }).notNull(),
     repo: varchar('repo', { length: 255 }).notNull(),
+    status: varchar('status', { length: 20 }).notNull().default('pending'),
+    confirmationToken: varchar('confirmation_token', { length: 255 }),
+    tokenExpiresAt: timestamp('token_expires_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   table => [
     uniqueIndex('subscriptions_email_owner_repo_idx').on(table.email, table.owner, table.repo),
     index('subscriptions_owner_repo_idx').on(table.owner, table.repo),
+    uniqueIndex('subscriptions_confirmation_token_idx').on(table.confirmationToken),
   ]
 );
 

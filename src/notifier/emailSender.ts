@@ -29,12 +29,13 @@ async function sendViaBrevo(to: string, subject: string, html: string): Promise<
     }),
   });
 
+  const body = await response.text();
+
   if (!response.ok) {
-    const body = await response.text();
     throw new Error(`Brevo API error ${response.status}: ${body}`);
   }
 
-  logger.info(`Email sent to ${to} via Brevo API`);
+  logger.info(`Email sent to ${to} via Brevo API, response: ${body}`);
 }
 
 // SMTP sender (Ethereal for dev, custom SMTP for prod)

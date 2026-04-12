@@ -12,32 +12,6 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Brevo HTTP API sender
-async function sendViaBrevo(to: string, subject: string, html: string): Promise<void> {
-  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
-    method: 'POST',
-    headers: {
-      'api-key': config.BREVO_API_KEY!,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify({
-      sender: { email: config.SMTP_FROM },
-      to: [{ email: to }],
-      subject,
-      htmlContent: html,
-    }),
-  });
-
-  const body = await response.text();
-
-  if (!response.ok) {
-    throw new Error(`Brevo API error ${response.status}: ${body}`);
-  }
-
-  logger.info(`Email sent to ${to} via Brevo API, response: ${body}`);
-}
-
 async function sendViaResend(to: string, subject: string, html: string): Promise<void> {
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -129,11 +103,7 @@ async function sendViaSmtp(to: string, subject: string, html: string): Promise<v
 
 // Main send function with retry logic
 export async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
-  const sender = config.RESEND_API_KEY
-    ? sendViaResend
-    : config.BREVO_API_KEY
-      ? sendViaBrevo
-      : sendViaSmtp;
+  const sender = config.RESEND_API_KEY ? sendViaResend : sendViaSmtp;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {

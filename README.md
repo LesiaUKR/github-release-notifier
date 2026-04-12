@@ -421,6 +421,7 @@ GET https://<your-service>.onrender.com/metrics
 ### Render PostgreSQL
 
 ![Render PostgreSQL](./assets/10-render-postgres.png)
+![Drizzle](./assets/10-1-render-postgres.png)
 
 ### Upstash Redis
 

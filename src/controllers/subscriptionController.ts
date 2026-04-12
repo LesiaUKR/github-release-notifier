@@ -1,8 +1,8 @@
 import { Request, Response } from 'express';
 
+import { AppError } from '../errors';
 import { sendConfirmationEmail } from '../notifier';
 import * as subscriptionService from '../services/subscriptionService';
-import { logger } from '../utils/logger';
 
 export async function create(req: Request, res: Response): Promise<void> {
   const { email, repo } = req.body;
@@ -10,15 +10,20 @@ export async function create(req: Request, res: Response): Promise<void> {
 
   const subscription = await subscriptionService.createSubscription(email, owner, repoName);
 
-  if (subscription.confirmationToken) {
-    sendConfirmationEmail({
-      email: subscription.email,
-      owner: subscription.owner,
-      repo: subscription.repo,
-      confirmationToken: subscription.confirmationToken,
-    }).catch(error => {
-      logger.error('Failed to send confirmation email:', error);
-    });
+  if (!subscription.confirmationToken) {
+    throw new AppError('Failed to create confirmation token', 500);
+  }
+
+  const sent = await sendConfirmationEmail({
+    email: subscription.email,
+    owner: subscription.owner,
+    repo: subscription.repo,
+    confirmationToken: subscription.confirmationToken,
+  });
+
+  if (!sent) {
+    await subscriptionService.deactivatePendingSubscription(subscription.id);
+    throw new AppError('Failed to send confirmation email. Please try again later.', 503);
   }
 
   res.status(201).json(subscription);

@@ -119,6 +119,7 @@ describe('subscriptionService', () => {
       await expect(
         subscriptionService.createSubscription('test@example.com', 'facebook', 'react')
       ).rejects.toThrow(ConflictError);
+      expect(mockValidateAndUpsert).not.toHaveBeenCalled();
     });
 
     it('should throw ConflictError if pending and token not expired', async () => {
@@ -129,6 +130,7 @@ describe('subscriptionService', () => {
       await expect(
         subscriptionService.createSubscription('test@example.com', 'facebook', 'react')
       ).rejects.toThrow(ConflictError);
+      expect(mockValidateAndUpsert).not.toHaveBeenCalled();
     });
 
     it('should reactivate if pending and token expired', async () => {
@@ -145,6 +147,7 @@ describe('subscriptionService', () => {
         'react'
       );
 
+      expect(mockValidateAndUpsert).toHaveBeenCalledWith('facebook', 'react');
       expect(db.update).toHaveBeenCalled();
       expect(result.status).toBe('pending');
     });
@@ -161,6 +164,7 @@ describe('subscriptionService', () => {
         'react'
       );
 
+      expect(mockValidateAndUpsert).toHaveBeenCalledWith('facebook', 'react');
       expect(db.update).toHaveBeenCalled();
       expect(result.status).toBe('pending');
     });

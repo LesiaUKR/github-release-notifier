@@ -95,12 +95,16 @@ const mockRelease = {
   published_at: '2025-01-01T00:00:00Z',
 };
 
+const activeSubscribers = [{ email: 'user@example.com', confirmationToken: 'token-1' }];
+
 describe('releaseChecker', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     mockGetRateLimitState.mockReturnValue({ remaining: 50, resetAt: null });
     mockCacheGet.mockResolvedValue(null);
     mockCacheSet.mockResolvedValue(undefined);
+    mockGetByOwnerRepo.mockResolvedValue(activeSubscribers);
+    mockSendNotifications.mockResolvedValue({ total: 1, sent: 1, failed: 0 });
     db._mocks.mockWhere.mockResolvedValue(undefined);
   });
 
@@ -147,7 +151,7 @@ describe('releaseChecker', () => {
     mockGetAllTracked.mockResolvedValueOnce([{ ...baseRepo, lastSeenTag: 'v18.1.0' }]);
     mockGetLatestRelease.mockResolvedValueOnce(mockRelease);
     mockGetByOwnerRepo.mockResolvedValueOnce(subscribers);
-    mockSendNotifications.mockResolvedValueOnce(undefined);
+    mockSendNotifications.mockResolvedValueOnce({ total: 2, sent: 2, failed: 0 });
 
     const promise = checkAllRepositories();
     await jest.advanceTimersByTimeAsync(2000);
@@ -161,6 +165,9 @@ describe('releaseChecker', () => {
       htmlUrl: 'https://github.com/facebook/react/releases/tag/v18.2.0',
       body: 'Release notes',
     });
+    expect(db._mocks.mockSet).toHaveBeenCalledWith(
+      expect.objectContaining({ lastSeenTag: 'v18.2.0' })
+    );
     expect(mockMetricInc).toHaveBeenCalled();
   });
 
@@ -202,11 +209,45 @@ describe('releaseChecker', () => {
     expect(mockGetLatestRelease).toHaveBeenCalledTimes(1);
   });
 
+  it('should skip repos that have no active subscribers', async () => {
+    const secondRepo = { ...baseRepo, id: 'repo-2', repo: 'vue', lastSeenTag: 'v3.0.0' };
+    mockGetAllTracked.mockResolvedValueOnce([{ ...baseRepo, lastSeenTag: 'v18.1.0' }, secondRepo]);
+    mockGetByOwnerRepo.mockResolvedValueOnce([]).mockResolvedValueOnce(activeSubscribers);
+    mockGetLatestRelease.mockResolvedValueOnce({ ...mockRelease, tag_name: 'v3.0.0' });
+
+    const promise = checkAllRepositories();
+    await jest.advanceTimersByTimeAsync(2000);
+    await promise;
+
+    expect(mockGetLatestRelease).toHaveBeenCalledTimes(1);
+    expect(mockGetLatestRelease).toHaveBeenCalledWith('facebook', 'vue');
+  });
+
+  it('should keep lastSeenTag unchanged when notification delivery is partial', async () => {
+    const subscribers = [
+      { email: 'user@example.com', confirmationToken: 'token-1' },
+      { email: 'user2@example.com', confirmationToken: 'token-2' },
+    ];
+    mockGetAllTracked.mockResolvedValueOnce([{ ...baseRepo, lastSeenTag: 'v18.1.0' }]);
+    mockGetLatestRelease.mockResolvedValueOnce(mockRelease);
+    mockGetByOwnerRepo.mockResolvedValueOnce(subscribers);
+    mockSendNotifications.mockResolvedValueOnce({ total: 2, sent: 1, failed: 1 });
+
+    const promise = checkAllRepositories();
+    await jest.advanceTimersByTimeAsync(2000);
+    await promise;
+
+    expect(mockSendNotifications).toHaveBeenCalled();
+    expect(db._mocks.mockSet).not.toHaveBeenCalledWith(
+      expect.objectContaining({ lastSeenTag: 'v18.2.0' })
+    );
+  });
+
   it('should use cached release data when available', async () => {
     mockGetAllTracked.mockResolvedValueOnce([{ ...baseRepo, lastSeenTag: 'v18.1.0' }]);
     mockCacheGet.mockResolvedValueOnce(mockRelease);
-    mockGetByOwnerRepo.mockResolvedValueOnce([]);
-    mockSendNotifications.mockResolvedValueOnce(undefined);
+    mockGetByOwnerRepo.mockResolvedValueOnce(activeSubscribers);
+    mockSendNotifications.mockResolvedValueOnce({ total: 1, sent: 1, failed: 0 });
 
     const promise = checkAllRepositories();
     await jest.advanceTimersByTimeAsync(2000);

@@ -1,6 +1,7 @@
 import { type sendUnaryData, type ServerUnaryCall, status as GrpcStatus } from '@grpc/grpc-js';
 
 import { AppError, ConflictError, NotFoundError, ValidationError } from '../errors';
+import { sendConfirmationEmail } from '../notifier';
 import * as subscriptionService from '../services/subscriptionService';
 
 interface CreateRequest {
@@ -56,6 +57,30 @@ export async function createSubscription(
     }
 
     const subscription = await subscriptionService.createSubscription(email, owner, repoName);
+
+    if (!subscription.confirmationToken) {
+      callback({
+        code: GrpcStatus.INTERNAL,
+        message: 'Failed to create confirmation token',
+      });
+      return;
+    }
+
+    const sent = await sendConfirmationEmail({
+      email: subscription.email,
+      owner: subscription.owner,
+      repo: subscription.repo,
+      confirmationToken: subscription.confirmationToken,
+    });
+
+    if (!sent) {
+      await subscriptionService.deactivatePendingSubscription(subscription.id);
+      callback({
+        code: GrpcStatus.UNAVAILABLE,
+        message: 'Failed to send confirmation email. Please try again later.',
+      });
+      return;
+    }
 
     callback(null, {
       id: subscription.id,

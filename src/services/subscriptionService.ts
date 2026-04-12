@@ -8,9 +8,14 @@ import * as repositoryService from './repositoryService';
 
 const TOKEN_EXPIRY_HOURS = 24;
 
-export async function createSubscription(email: string, owner: string, repo: string) {
-  await repositoryService.validateAndUpsert(owner, repo);
+function createConfirmationTokenData() {
+  return {
+    confirmationToken: crypto.randomUUID(),
+    tokenExpiresAt: new Date(Date.now() + TOKEN_EXPIRY_HOURS * 60 * 60 * 1000),
+  };
+}
 
+export async function createSubscription(email: string, owner: string, repo: string) {
   const existing = await db
     .select()
     .from(subscriptions)
@@ -21,9 +26,6 @@ export async function createSubscription(email: string, owner: string, repo: str
         eq(subscriptions.repo, repo)
       )
     );
-
-  const token = crypto.randomUUID();
-  const tokenExpiresAt = new Date(Date.now() + TOKEN_EXPIRY_HOURS * 60 * 60 * 1000);
 
   if (existing.length > 0) {
     const sub = existing[0];
@@ -36,22 +38,42 @@ export async function createSubscription(email: string, owner: string, repo: str
       throw new ConflictError('Confirmation email already sent. Check your inbox');
     }
 
-    // pending + expired OR inactive → reactivate
+    // Re-validate repository existence before re-activating subscription.
+    await repositoryService.validateAndUpsert(owner, repo);
+    const { confirmationToken, tokenExpiresAt } = createConfirmationTokenData();
+
     const [updated] = await db
       .update(subscriptions)
-      .set({ status: 'pending', confirmationToken: token, tokenExpiresAt })
+      .set({ status: 'pending', confirmationToken, tokenExpiresAt })
       .where(eq(subscriptions.id, sub.id))
       .returning();
 
     return updated;
   }
 
+  await repositoryService.validateAndUpsert(owner, repo);
+  const { confirmationToken, tokenExpiresAt } = createConfirmationTokenData();
+
   const [subscription] = await db
     .insert(subscriptions)
-    .values({ email, owner, repo, status: 'pending', confirmationToken: token, tokenExpiresAt })
+    .values({ email, owner, repo, status: 'pending', confirmationToken, tokenExpiresAt })
     .returning();
 
   return subscription;
+}
+
+export async function deactivatePendingSubscription(id: string) {
+  const [updated] = await db
+    .update(subscriptions)
+    .set({
+      status: 'inactive',
+      confirmationToken: null,
+      tokenExpiresAt: null,
+    })
+    .where(and(eq(subscriptions.id, id), eq(subscriptions.status, 'pending')))
+    .returning();
+
+  return updated ?? null;
 }
 
 export async function confirmSubscription(token: string) {

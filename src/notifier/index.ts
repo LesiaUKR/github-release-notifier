@@ -17,7 +17,13 @@ interface ConfirmationData {
   confirmationToken: string;
 }
 
-export async function sendConfirmationEmail(data: ConfirmationData): Promise<void> {
+interface NotificationResult {
+  total: number;
+  sent: number;
+  failed: number;
+}
+
+export async function sendConfirmationEmail(data: ConfirmationData): Promise<boolean> {
   const confirmUrl = `${config.BASE_URL}/confirm/${data.confirmationToken}`;
   const unsubscribeUrl = `${config.BASE_URL}/unsubscribe/${data.confirmationToken}`;
 
@@ -39,20 +45,25 @@ export async function sendConfirmationEmail(data: ConfirmationData): Promise<voi
       `Notifier: failed to send confirmation email to ${data.email} for ${data.owner}/${data.repo}`
     );
   }
+
+  return sent;
 }
 
 export async function sendReleaseNotifications(
   subscribers: Subscriber[],
   releaseData: Omit<ReleaseEmailData, 'unsubscribeUrl'>
-): Promise<void> {
+): Promise<NotificationResult> {
   if (subscribers.length === 0) {
     logger.debug('Notifier: no subscribers to notify');
-    return;
+    return { total: 0, sent: 0, failed: 0 };
   }
 
   logger.info(
     `Notifier: sending ${subscribers.length} emails for ${releaseData.owner}/${releaseData.repo} ${releaseData.tagName}`
   );
+
+  let sent = 0;
+  let failed = 0;
 
   for (const subscriber of subscribers) {
     const unsubscribeUrl = subscriber.confirmationToken
@@ -64,10 +75,22 @@ export async function sendReleaseNotifications(
       unsubscribeUrl,
     });
 
-    await sendEmail(subscriber.email, subject, html);
+    const delivered = await sendEmail(subscriber.email, subject, html);
+
+    if (delivered) {
+      sent += 1;
+    } else {
+      failed += 1;
+    }
   }
 
   logger.info(
-    `Notifier: finished sending emails for ${releaseData.owner}/${releaseData.repo} ${releaseData.tagName}`
+    `Notifier: finished sending emails for ${releaseData.owner}/${releaseData.repo} ${releaseData.tagName} (${sent}/${subscribers.length} delivered)`
   );
+
+  return {
+    total: subscribers.length,
+    sent,
+    failed,
+  };
 }

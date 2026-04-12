@@ -21,9 +21,25 @@ app.use(cors());
 app.use(express.json({ limit: '100kb' }));
 app.use(metricsMiddleware);
 
+interface SwaggerDocument {
+  servers?: Array<{
+    url: string;
+    description?: string;
+  }>;
+}
+
 function setupSwagger(app: express.Express): void {
   const swaggerPath = path.join(__dirname, '..', 'swagger.yaml');
-  const swaggerDocument = YAML.parse(fs.readFileSync(swaggerPath, 'utf-8'));
+  const swaggerDocument = YAML.parse(fs.readFileSync(swaggerPath, 'utf-8')) as SwaggerDocument;
+  const runtimeBaseUrl = config.BASE_URL.replace(/\/+$/, '');
+
+  swaggerDocument.servers = [
+    {
+      url: runtimeBaseUrl,
+      description: 'Runtime base URL',
+    },
+  ];
+
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 }
 

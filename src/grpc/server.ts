@@ -21,7 +21,7 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
 const subscriptionsProto = grpc.loadPackageDefinition(packageDefinition)
   .subscriptions as grpc.GrpcObject;
 
-export function startGrpcServer(): void {
+export function startGrpcServer(): grpc.Server {
   const server = new grpc.Server();
 
   server.addService(
@@ -47,4 +47,6 @@ export function startGrpcServer(): void {
       logger.info(`gRPC server running on port ${port}`);
     }
   );
+
+  return server;
 }

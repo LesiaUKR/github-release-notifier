@@ -6,6 +6,7 @@ import path from 'path';
 import swaggerUi from 'swagger-ui-express';
 import YAML from 'yaml';
 
+import { config } from './config';
 import { errorHandler } from './middleware/errorHandler';
 import { metricsMiddleware } from './middleware/metricsMiddleware';
 import confirmRoutes from './routes/confirm';
@@ -13,7 +14,7 @@ import subscriptionRoutes from './routes/subscriptions';
 import { register } from './utils/metrics';
 
 const app = express();
-app.set('trust proxy', 1);
+app.set('trust proxy', config.TRUST_PROXY);
 
 app.use(helmet());
 app.use(cors());

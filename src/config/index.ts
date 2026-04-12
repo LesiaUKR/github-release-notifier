@@ -3,6 +3,15 @@ import { z } from 'zod/v4';
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(3000),
+  TRUST_PROXY: z.preprocess(value => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+      if (['0', 'false', 'no', 'off', ''].includes(normalized)) return false;
+    }
+    return value;
+  }, z.boolean().default(false)),
 
   DATABASE_URL: z.url(),
 

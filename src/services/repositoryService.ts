@@ -1,5 +1,3 @@
-import { and, eq } from 'drizzle-orm';
-
 import { db } from '../db';
 import { repositories } from '../db/schema';
 import * as githubClient from '../scanner/githubClient';
@@ -27,15 +25,6 @@ export async function validateAndUpsert(owner: string, repo: string) {
     .returning();
 
   return repository;
-}
-
-export async function findByOwnerRepo(owner: string, repo: string) {
-  const [repository] = await db
-    .select()
-    .from(repositories)
-    .where(and(eq(repositories.owner, owner), eq(repositories.repo, repo)));
-
-  return repository ?? null;
 }
 
 export async function getAllTracked() {

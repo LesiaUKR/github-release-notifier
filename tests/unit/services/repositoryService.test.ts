@@ -141,24 +141,6 @@ describe('repositoryService', () => {
     });
   });
 
-  describe('findByOwnerRepo', () => {
-    it('should return repository if found', async () => {
-      db._mocks.mockWhere.mockResolvedValueOnce([mockRepository]);
-
-      const result = await repositoryService.findByOwnerRepo('facebook', 'react');
-
-      expect(result).toEqual(mockRepository);
-    });
-
-    it('should return null if not found', async () => {
-      db._mocks.mockWhere.mockResolvedValueOnce([]);
-
-      const result = await repositoryService.findByOwnerRepo('facebook', 'nonexistent');
-
-      expect(result).toBeNull();
-    });
-  });
-
   describe('getAllTracked', () => {
     it('should return all repositories', async () => {
       const mockRepos = [mockRepository, { ...mockRepository, id: 'another-id', repo: 'vue' }];

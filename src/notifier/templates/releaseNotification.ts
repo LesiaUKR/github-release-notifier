@@ -1,6 +1,7 @@
 import { escapeHtml } from './helpers';
 
-const MAX_BODY_LENGTH = 500;
+const MAX_BODY_LENGTH = 1200;
+const MAX_IMAGE_COUNT = 3;
 
 interface ReleaseEmailData {
   owner: string;
@@ -19,7 +20,79 @@ interface EmailContent {
 
 function truncate(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
-  return text.slice(0, maxLength) + '…';
+  return text.slice(0, maxLength) + '...';
+}
+
+function isSafeHttpUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function extractImageUrls(text: string): string[] {
+  const urls = new Set<string>();
+  const markdownImageRegex = /!\[[^\]]*]\((https?:\/\/[^\s)]+)\)/gi;
+  const htmlImageRegex = /<img[^>]*src=["'](https?:\/\/[^"']+)["'][^>]*>/gi;
+
+  for (const match of text.matchAll(markdownImageRegex)) {
+    const url = match[1];
+    if (isSafeHttpUrl(url)) {
+      urls.add(url);
+    }
+  }
+
+  for (const match of text.matchAll(htmlImageRegex)) {
+    const url = match[1];
+    if (isSafeHttpUrl(url)) {
+      urls.add(url);
+    }
+  }
+
+  return Array.from(urls).slice(0, MAX_IMAGE_COUNT);
+}
+
+function stripInlineImageMarkup(text: string): string {
+  return text
+    .replace(/!\[[^\]]*]\((https?:\/\/[^\s)]+)\)/gi, '')
+    .replace(/<img[^>]*>/gi, '')
+    .trim();
+}
+
+function linkifyUrls(text: string): string {
+  return text.replace(/https?:\/\/[^\s<]+/g, url => {
+    return `<a href="${url}" style="color:#0969da;text-decoration:underline;">${url}</a>`;
+  });
+}
+
+function renderReleaseNotesText(text: string): string {
+  const withoutImages = stripInlineImageMarkup(text);
+  if (!withoutImages) {
+    return '';
+  }
+
+  const escaped = escapeHtml(truncate(withoutImages, MAX_BODY_LENGTH));
+  const withLinks = linkifyUrls(escaped);
+  return withLinks.replace(/\r?\n/g, '<br>');
+}
+
+function renderImageGallery(imageUrls: string[]): string {
+  if (imageUrls.length === 0) {
+    return '';
+  }
+
+  const imagesHtml = imageUrls
+    .map(url => {
+      const safeUrl = escapeHtml(url);
+      return `<a href="${safeUrl}" style="display:block;margin-top:12px;">
+        <img src="${safeUrl}" alt="Release image" style="max-width:100%;height:auto;border-radius:6px;border:1px solid #d0d7de;display:block;">
+      </a>`;
+    })
+    .join('');
+
+  return `<div style="margin-top:12px;">${imagesHtml}</div>`;
 }
 
 export function buildReleaseEmail(data: ReleaseEmailData): EmailContent {
@@ -28,10 +101,17 @@ export function buildReleaseEmail(data: ReleaseEmailData): EmailContent {
 
   const subject = `New release: ${repoFullName} ${data.tagName}`;
 
+  const releaseNotesText = data.body ? renderReleaseNotesText(data.body) : '';
+  const imageUrls = data.body ? extractImageUrls(data.body) : [];
   const releaseNotes = data.body
     ? `<div style="background:#f6f8fa;padding:16px;border-radius:6px;margin-top:16px;">
         <h3 style="margin:0 0 8px;">Release Notes</h3>
-        <p style="margin:0;white-space:pre-wrap;">${escapeHtml(truncate(data.body, MAX_BODY_LENGTH))}</p>
+        ${
+          releaseNotesText
+            ? `<p style="margin:0;white-space:normal;line-height:1.5;">${releaseNotesText}</p>`
+            : ''
+        }
+        ${renderImageGallery(imageUrls)}
       </div>`
     : '';
 
